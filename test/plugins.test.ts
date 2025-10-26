@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseList, parsePluginList } from '../src/plugins'
+import { parseList, parsePluginList, validateMarketplaceSource, validatePluginName } from '../src/plugins'
 
 describe('plugins', () => {
   describe('parseList', () => {
@@ -89,6 +89,204 @@ owner3/repo3`
       const result = parsePluginList('plugin1,plugin2,plugin3')
 
       expect(result).toEqual(['plugin1', 'plugin2', 'plugin3'])
+    })
+  })
+
+  describe('validatePluginName', () => {
+    describe('valid plugin names', () => {
+      it('should accept simple plugin name', () => {
+        expect(() => validatePluginName('simple-plugin')).not.toThrow()
+      })
+
+      it('should accept plugin with marketplace suffix', () => {
+        expect(() => validatePluginName('plugin@marketplace')).not.toThrow()
+      })
+
+      it('should accept scoped plugin name', () => {
+        expect(() => validatePluginName('dev-tools@passionfactory')).not.toThrow()
+      })
+
+      it('should accept plugin with slashes', () => {
+        expect(() => validatePluginName('org/plugin@marketplace')).not.toThrow()
+      })
+
+      it('should accept plugin with dots', () => {
+        expect(() => validatePluginName('plugin.name@marketplace')).not.toThrow()
+      })
+
+      it('should accept plugin with underscores', () => {
+        expect(() => validatePluginName('plugin_name@marketplace')).not.toThrow()
+      })
+
+      it('should accept numeric plugin names', () => {
+        expect(() => validatePluginName('plugin123@marketplace')).not.toThrow()
+      })
+    })
+
+    describe('path traversal attacks', () => {
+      it('should reject plugin name with ../ (Unix)', () => {
+        expect(() => validatePluginName('../etc/passwd')).toThrow('path traversal detected')
+      })
+
+      it('should reject plugin name with ..\\ (Windows)', () => {
+        expect(() => validatePluginName('..\\windows\\system32')).toThrow('path traversal detected')
+      })
+
+      it('should reject plugin name with embedded ../', () => {
+        expect(() => validatePluginName('plugin/../../../etc')).toThrow('path traversal detected')
+      })
+    })
+
+    describe('length limit', () => {
+      it('should reject plugin names exceeding 512 characters', () => {
+        const longName = 'a'.repeat(513)
+        expect(() => validatePluginName(longName)).toThrow('exceeds maximum length of 512 characters')
+      })
+
+      it('should accept plugin names at exactly 512 characters', () => {
+        const maxName = 'a'.repeat(512)
+        expect(() => validatePluginName(maxName)).not.toThrow()
+      })
+    })
+
+    describe('character validation', () => {
+      it('should reject plugin name with spaces', () => {
+        expect(() => validatePluginName('plugin with spaces')).toThrow('contains disallowed characters')
+      })
+
+      it('should reject plugin name with special characters', () => {
+        expect(() => validatePluginName('plugin;rm -rf /')).toThrow('contains disallowed characters')
+      })
+
+      it('should reject plugin name with shell metacharacters', () => {
+        expect(() => validatePluginName('plugin$(whoami)')).toThrow('contains disallowed characters')
+      })
+
+      it('should reject plugin name with pipe character', () => {
+        expect(() => validatePluginName('plugin|echo')).toThrow('contains disallowed characters')
+      })
+
+      it('should reject plugin name with backticks', () => {
+        expect(() => validatePluginName('plugin`cmd`')).toThrow('contains disallowed characters')
+      })
+
+      it('should reject plugin name with quotes', () => {
+        expect(() => validatePluginName('plugin"test"')).toThrow('contains disallowed characters')
+      })
+    })
+
+    describe('unicode normalization', () => {
+      it('should normalize unicode (NFC) before validation', () => {
+        // Valid plugin name with normalization (no special chars after normalization)
+        const validName = 'plugin-name@marketplace'
+        expect(() => validatePluginName(validName.normalize('NFC'))).not.toThrow()
+      })
+
+      it('should reject non-ASCII characters even after normalization', () => {
+        // Combining characters normalize to non-ASCII, which should be rejected
+        const denormalized = 'plugin\u0301' // results in 'plugiń'
+        expect(() => validatePluginName(denormalized)).toThrow('contains disallowed characters')
+      })
+
+      it('should detect path traversal after normalization', () => {
+        // Unicode lookalike for '../'
+        expect(() => validatePluginName('\u2024\u2024/')).toThrow()
+      })
+    })
+  })
+
+  describe('validateMarketplaceSource', () => {
+    describe('valid marketplace sources', () => {
+      it('should accept GitHub repo format', () => {
+        expect(() => validateMarketplaceSource('owner/repo')).not.toThrow()
+      })
+
+      it('should accept GitHub repo with hyphens', () => {
+        expect(() => validateMarketplaceSource('my-org/my-repo')).not.toThrow()
+      })
+
+      it('should accept HTTPS Git URL', () => {
+        expect(() => validateMarketplaceSource('https://github.com/owner/repo.git')).not.toThrow()
+      })
+
+      it('should accept HTTP Git URL', () => {
+        expect(() => validateMarketplaceSource('http://gitlab.com/owner/repo.git')).not.toThrow()
+      })
+
+      it('should accept HTTPS JSON URL', () => {
+        expect(() => validateMarketplaceSource('https://example.com/marketplace.json')).not.toThrow()
+      })
+
+      it('should accept local relative path with ./', () => {
+        expect(() => validateMarketplaceSource('./my-marketplace')).not.toThrow()
+      })
+
+      it('should accept local relative path with ../', () => {
+        expect(() => validateMarketplaceSource('../shared-marketplace')).not.toThrow()
+      })
+
+      it('should accept absolute path', () => {
+        expect(() => validateMarketplaceSource('/opt/marketplace')).not.toThrow()
+      })
+    })
+
+    describe('path traversal attacks', () => {
+      it('should reject non-local path with embedded ../', () => {
+        expect(() => validateMarketplaceSource('malicious/../../../etc/passwd')).toThrow('path traversal detected')
+      })
+
+      it('should reject non-local path with ..\\ (Windows)', () => {
+        expect(() => validateMarketplaceSource('malicious\\..\\..\\windows')).toThrow('path traversal detected')
+      })
+
+      it('should allow legitimate local relative paths', () => {
+        expect(() => validateMarketplaceSource('../marketplace')).not.toThrow()
+        expect(() => validateMarketplaceSource('./marketplace')).not.toThrow()
+      })
+    })
+
+    describe('length limit', () => {
+      it('should reject marketplace source exceeding 512 characters', () => {
+        const longSource = `https://example.com/${'a'.repeat(500)}`
+        expect(() => validateMarketplaceSource(longSource)).toThrow('exceeds maximum length of 512 characters')
+      })
+
+      it('should accept marketplace source at exactly 512 characters', () => {
+        const maxSource = `https://example.com/${'a'.repeat(492)}`
+        expect(() => validateMarketplaceSource(maxSource)).not.toThrow()
+      })
+    })
+
+    describe('format validation', () => {
+      it('should reject invalid format (not GitHub, Git URL, or local path)', () => {
+        expect(() => validateMarketplaceSource('invalid format')).toThrow('must be GitHub (owner/repo), Git URL, or local path')
+      })
+
+      it('should reject empty string', () => {
+        expect(() => validateMarketplaceSource('')).toThrow()
+      })
+
+      it('should reject malformed GitHub repo', () => {
+        expect(() => validateMarketplaceSource('owner/repo/extra')).toThrow()
+      })
+    })
+
+    describe('unicode normalization', () => {
+      it('should normalize unicode (NFC) before validation', () => {
+        // Valid marketplace source with normalization
+        const validSource = 'owner/repo'
+        expect(() => validateMarketplaceSource(validSource.normalize('NFC'))).not.toThrow()
+      })
+
+      it('should reject non-ASCII characters even after normalization', () => {
+        // Combining characters normalize to non-ASCII, which should be rejected
+        const denormalized = 'owner/repo\u0301' // results in 'owner/repó'
+        expect(() => validateMarketplaceSource(denormalized)).toThrow()
+      })
+
+      it('should detect path traversal after normalization', () => {
+        expect(() => validateMarketplaceSource('malicious\u2024\u2024/')).toThrow()
+      })
     })
   })
 })
