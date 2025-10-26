@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://github.com/pleaseai/setup-claude-code/compare/v1.0.0...v1.1.0) (2025-10-26)
+
+
+### Features
+
+* add security validation for plugin and marketplace inputs ([#4](https://github.com/pleaseai/setup-claude-code/issues/4)) ([558a8f0](https://github.com/pleaseai/setup-claude-code/commit/558a8f0500230045094d323fda1ca390216a55af))
+
 ## 1.0.0 (2025-10-23)
 
 
