@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest'
-import { parseList, parsePluginList, validateMarketplaceSource, validatePluginName } from '../src/plugins'
+import * as exec from '@actions/exec'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { addOrUpdateMarketplace, installPlugins, parseList, parsePluginList, validateMarketplaceSource, validatePluginName } from '../src/plugins'
 
 describe('plugins', () => {
   describe('parseList', () => {
@@ -287,6 +288,127 @@ owner3/repo3`
       it('should detect path traversal after normalization', () => {
         expect(() => validateMarketplaceSource('malicious\u2024\u2024/')).toThrow()
       })
+    })
+  })
+
+  describe('installPlugins integration', () => {
+    beforeEach(() => {
+      vi.clearAllMocks()
+    })
+
+    it('should fail fast with validation error when plugin name is invalid', async () => {
+      const invalidPlugin = '../malicious-plugin'
+
+      await expect(installPlugins(invalidPlugin))
+        .rejects
+        .toThrow('Invalid plugin name "../malicious-plugin": path traversal detected')
+    })
+
+    it('should not call executeClaudeCommand when validation fails', async () => {
+      const execSpy = vi.spyOn(exec, 'getExecOutput')
+      const invalidPlugin = 'plugin;rm -rf /'
+
+      await expect(installPlugins(invalidPlugin))
+        .rejects
+        .toThrow('contains disallowed characters')
+
+      // Verify exec was never called
+      expect(execSpy).not.toHaveBeenCalled()
+
+      execSpy.mockRestore()
+    })
+
+    it('should validate all plugins and fail on first invalid without processing remaining', async () => {
+      const execSpy = vi.spyOn(exec, 'getExecOutput').mockResolvedValue({
+        exitCode: 0,
+        stdout: 'Installed successfully',
+        stderr: '',
+      })
+
+      // First plugin is valid, second is invalid with path traversal
+      const mixedList = 'valid-plugin,../malicious,another-valid'
+
+      await expect(installPlugins(mixedList))
+        .rejects
+        .toThrow('path traversal detected')
+
+      // Verify only the first valid plugin was installed before hitting the invalid one
+      expect(execSpy).toHaveBeenCalledTimes(1)
+      expect(execSpy).toHaveBeenCalledWith(
+        'claude',
+        ['plugin', 'install', 'valid-plugin'],
+        expect.objectContaining({ silent: false }),
+      )
+
+      execSpy.mockRestore()
+    })
+
+    it('should install all plugins when all are valid', async () => {
+      const execSpy = vi.spyOn(exec, 'getExecOutput').mockResolvedValue({
+        exitCode: 0,
+        stdout: 'Installed successfully',
+        stderr: '',
+      })
+
+      const validList = 'plugin1@marketplace,plugin2@marketplace,plugin3@marketplace'
+      const result = await installPlugins(validList)
+
+      expect(result).toEqual(['plugin1@marketplace', 'plugin2@marketplace', 'plugin3@marketplace'])
+      expect(execSpy).toHaveBeenCalledTimes(3)
+
+      execSpy.mockRestore()
+    })
+  })
+
+  describe('addOrUpdateMarketplace integration', () => {
+    beforeEach(() => {
+      vi.clearAllMocks()
+    })
+
+    it('should fail with validation error when marketplace source is invalid', async () => {
+      const invalidSource = 'malicious/../../../etc/passwd'
+
+      await expect(addOrUpdateMarketplace(invalidSource))
+        .rejects
+        .toThrow('Invalid marketplace source')
+    })
+
+    it('should not check installation status when validation fails', async () => {
+      const execSpy = vi.spyOn(exec, 'getExecOutput')
+      const invalidSource = 'invalid format with spaces'
+
+      await expect(addOrUpdateMarketplace(invalidSource))
+        .rejects
+        .toThrow('must be GitHub (owner/repo), Git URL, or local path')
+
+      // Verify no CLI commands were executed
+      expect(execSpy).not.toHaveBeenCalled()
+
+      execSpy.mockRestore()
+    })
+
+    it('should accept valid marketplace sources', async () => {
+      const execSpy = vi.spyOn(exec, 'getExecOutput')
+        .mockResolvedValueOnce({
+          // marketplace list (none found)
+          exitCode: 0,
+          stdout: '',
+          stderr: '',
+        })
+        .mockResolvedValueOnce({
+          // marketplace add
+          exitCode: 0,
+          stdout: 'Added successfully',
+          stderr: '',
+        })
+
+      const validSource = 'owner/repo'
+      const result = await addOrUpdateMarketplace(validSource)
+
+      expect(result).toBe(true) // Newly added
+      expect(execSpy).toHaveBeenCalledTimes(2)
+
+      execSpy.mockRestore()
     })
   })
 })

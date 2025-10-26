@@ -77782,10 +77782,11 @@ const PLUGIN_NAME_PATTERN = /^[@\w.\-/]+$/;
 /**
  * Validate plugin name to prevent injection attacks
  * Based on Anthropic's security validation from claude-code-action
+ * @see https://github.com/anthropics/claude-code-action/commit/d4c0979
  *
  * Security measures:
  * - Unicode normalization (NFC) to prevent homoglyph attacks
- * - Path traversal detection (../, ..\)
+ * - Path traversal detection (basic ../ and ..\ patterns)
  * - Length limit (512 characters)
  * - Character whitelist (alphanumeric, @, -, _, /, .)
  *
@@ -77818,8 +77819,9 @@ function validatePluginName(pluginName) {
 function validateMarketplaceSource(source) {
     // Normalize unicode to prevent homoglyph attacks
     const normalized = source.normalize('NFC');
-    // Check for path traversal in non-local paths
-    // Allow ./ or ../ for legitimate local paths, but not mixed with other content
+    // Check for path traversal in non-local paths only
+    // Local paths starting with ./ or ../ are permitted (e.g., ../marketplace, ./local/path)
+    // Non-local paths embedding ../ or ..\ are rejected (e.g., malicious/../etc)
     const isLocalPath = normalized.startsWith('./') || normalized.startsWith('../');
     if (!isLocalPath && (normalized.includes('../') || normalized.includes('..\\'))) {
         throw new Error(`Invalid marketplace source "${source}": path traversal detected`);
@@ -77841,25 +77843,14 @@ function validateMarketplaceSource(source) {
  * Based on Anthropic's executeClaudeCommand pattern
  *
  * @param args - Command arguments to pass to claude CLI
- * @param context - Human-readable context for error messages
- * @throws Error with context if command fails
+ * @throws Error if command fails
  */
-async function executeClaudeCommand(args, context) {
-    try {
-        const result = await exec.getExecOutput('claude', args, {
-            silent: false,
-        });
-        // Check for non-zero exit code
-        if (result.exitCode !== 0) {
-            throw new Error(`Command failed with exit code ${result.exitCode}`);
-        }
-        return result;
-    }
-    catch (error) {
-        // Provide context in error message
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        throw new Error(`Failed to ${context}: ${errorMessage}`);
-    }
+async function executeClaudeCommand(args) {
+    const result = await exec.getExecOutput('claude', args, {
+        silent: false,
+        ignoreReturnCode: false, // Throws for non-zero exit codes
+    });
+    return result;
 }
 /**
  * Check if a marketplace is already installed
@@ -77895,7 +77886,8 @@ async function isMarketplaceInstalled(repo) {
         return null;
     }
     catch (error) {
-        core.debug(`Failed to check marketplace: ${error}`);
+        core.warning(`Failed to check if marketplace "${repo}" is installed: ${error}`);
+        core.warning('Will attempt to add marketplace anyway');
         return null;
     }
 }
@@ -77909,12 +77901,7 @@ async function isMarketplaceInstalled(repo) {
  */
 async function addOrUpdateMarketplace(source) {
     // Validate marketplace source for security
-    try {
-        validateMarketplaceSource(source);
-    }
-    catch (error) {
-        throw new Error(`Marketplace validation failed: ${error instanceof Error ? error.message : String(error)}`);
-    }
+    validateMarketplaceSource(source);
     core.info(`📦 Checking plugin marketplace: ${source}`);
     // For GitHub repos, check if already installed
     // For other sources, we'll just try to add and handle errors
@@ -77924,14 +77911,14 @@ async function addOrUpdateMarketplace(source) {
         if (existing) {
             core.info(`  ✅ Marketplace already installed: ${existing.name}`);
             core.info('  🔄 Updating marketplace...');
-            await executeClaudeCommand(['plugin', 'marketplace', 'update', existing.name], `update marketplace "${existing.name}"`);
+            await executeClaudeCommand(['plugin', 'marketplace', 'update', existing.name]);
             core.info('  ✅ Marketplace updated successfully');
             return false; // Not newly added
         }
     }
     // Add new marketplace (works for all source types)
     core.info('  📦 Adding marketplace...');
-    await executeClaudeCommand(['plugin', 'marketplace', 'add', source], `add marketplace "${source}"`);
+    await executeClaudeCommand(['plugin', 'marketplace', 'add', source]);
     core.info('  ✅ Marketplace added successfully');
     return true; // Newly added
 }
@@ -77996,14 +77983,9 @@ async function installPlugins(pluginList) {
     const installed = [];
     for (const plugin of plugins) {
         // Validate plugin name for security
-        try {
-            validatePluginName(plugin);
-        }
-        catch (error) {
-            throw new Error(`Plugin validation failed: ${error instanceof Error ? error.message : String(error)}`);
-        }
+        validatePluginName(plugin);
         core.info(`  Installing: ${plugin}`);
-        await executeClaudeCommand(['plugin', 'install', plugin], `install plugin "${plugin}"`);
+        await executeClaudeCommand(['plugin', 'install', plugin]);
         core.info('    ✅ Installed successfully');
         installed.push(plugin);
     }
