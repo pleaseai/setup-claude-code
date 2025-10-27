@@ -1,21 +1,36 @@
 import * as os from 'node:os'
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { getCacheKey, getRestoreKeys } from '../src/cache'
+import * as installer from '../src/installer'
 
 describe('cache', () => {
   const platform = os.platform()
 
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
   describe('getCacheKey', () => {
-    it('should generate key for specific version', () => {
-      const key = getCacheKey('1.0.0')
+    it('should generate key for specific version', async () => {
+      const key = await getCacheKey('1.0.0')
 
       expect(key).toBe(`claude-code-${platform}-1.0.0`)
     })
 
-    it('should generate key for latest version with date', () => {
-      const key = getCacheKey('latest')
+    it('should generate key for latest version with date', async () => {
+      const key = await getCacheKey('latest')
 
       expect(key).toMatch(new RegExp(`^claude-code-${platform}-latest-\\d{4}-\\d{2}-\\d{2}$`))
+    })
+
+    it('should generate key for stable version with resolved version number', async () => {
+      // Mock fetchStableVersion to return a specific version
+      vi.spyOn(installer, 'fetchStableVersion').mockResolvedValue('2.0.27')
+
+      const key = await getCacheKey('stable')
+
+      expect(key).toBe(`claude-code-${platform}-2.0.27`)
+      expect(installer.fetchStableVersion).toHaveBeenCalledOnce()
     })
   })
 

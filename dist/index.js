@@ -77419,12 +77419,16 @@ var core = __nccwpck_require__(7484);
 var external_node_os_ = __nccwpck_require__(8161);
 // EXTERNAL MODULE: ./node_modules/@actions/cache/lib/cache.js
 var cache = __nccwpck_require__(5116);
+// EXTERNAL MODULE: external "node:crypto"
+var external_node_crypto_ = __nccwpck_require__(7598);
 // EXTERNAL MODULE: external "node:fs"
 var external_node_fs_ = __nccwpck_require__(3024);
-;// CONCATENATED MODULE: external "node:path"
-const external_node_path_namespaceObject = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("node:path");
 // EXTERNAL MODULE: ./node_modules/@actions/exec/lib/exec.js
 var exec = __nccwpck_require__(5236);
+// EXTERNAL MODULE: ./node_modules/@actions/tool-cache/lib/tool-cache.js
+var tool_cache = __nccwpck_require__(3472);
+;// CONCATENATED MODULE: external "node:path"
+const external_node_path_namespaceObject = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("node:path");
 ;// CONCATENATED MODULE: ./src/utils.ts
 
 
@@ -77582,91 +77586,6 @@ async function setupGitCredentials(token) {
     }
 }
 
-;// CONCATENATED MODULE: ./src/cache.ts
-
-
-
-
-/**
- * Generate cache key for Claude Code installation
- */
-function getCacheKey(version) {
-    const platform = external_node_os_.platform();
-    if (version === 'latest') {
-        const date = getCurrentDate();
-        return `claude-code-${platform}-latest-${date}`;
-    }
-    else {
-        return `claude-code-${platform}-${version}`;
-    }
-}
-/**
- * Generate cache restore keys (fallback keys)
- */
-function getRestoreKeys(version) {
-    const platform = external_node_os_.platform();
-    return [
-        `claude-code-${platform}-${version}-`,
-        `claude-code-${platform}-`,
-    ];
-}
-/**
- * Get paths to cache
- */
-function getCachePaths() {
-    const paths = getClaudePaths();
-    return [paths.bin, paths.data];
-}
-/**
- * Restore Claude Code from cache
- */
-async function restoreCache(options) {
-    const { version } = options;
-    const cachePaths = getCachePaths();
-    const primaryKey = getCacheKey(version);
-    const restoreKeys = getRestoreKeys(version);
-    core.info(`Cache primary key: ${primaryKey}`);
-    core.debug(`Cache restore keys: ${restoreKeys.join(', ')}`);
-    core.debug(`Cache paths: ${cachePaths.join(', ')}`);
-    try {
-        const cacheKey = await cache.restoreCache(cachePaths, primaryKey, restoreKeys);
-        if (cacheKey) {
-            core.info(`✅ Cache restored from key: ${cacheKey}`);
-            return true;
-        }
-        else {
-            core.info('Cache not found');
-            return false;
-        }
-    }
-    catch (error) {
-        core.warning(`Failed to restore cache: ${error}`);
-        return false;
-    }
-}
-/**
- * Save Claude Code to cache
- */
-async function saveCache(options) {
-    const { version } = options;
-    const cachePaths = getCachePaths();
-    const primaryKey = getCacheKey(version);
-    core.info(`Saving to cache with key: ${primaryKey}`);
-    core.debug(`Cache paths: ${cachePaths.join(', ')}`);
-    try {
-        await cache.saveCache(cachePaths, primaryKey);
-        core.info('✅ Cache saved successfully');
-    }
-    catch (error) {
-        // Don't fail the action if cache save fails
-        core.warning(`Failed to save cache: ${error}`);
-    }
-}
-
-// EXTERNAL MODULE: external "node:crypto"
-var external_node_crypto_ = __nccwpck_require__(7598);
-// EXTERNAL MODULE: ./node_modules/@actions/tool-cache/lib/tool-cache.js
-var tool_cache = __nccwpck_require__(3472);
 ;// CONCATENATED MODULE: ./src/installer.ts
 
 
@@ -77769,6 +77688,93 @@ async function runInstaller(binaryPath, target) {
         args.push(target);
     }
     await exec.exec(binaryPath, args);
+}
+
+;// CONCATENATED MODULE: ./src/cache.ts
+
+
+
+
+
+/**
+ * Generate cache key for Claude Code installation
+ */
+async function getCacheKey(version) {
+    const platform = external_node_os_.platform();
+    if (version === 'latest') {
+        const date = getCurrentDate();
+        return `claude-code-${platform}-latest-${date}`;
+    }
+    else if (version === 'stable') {
+        // Resolve 'stable' to actual version number to create valid cache key
+        const resolvedVersion = await fetchStableVersion();
+        return `claude-code-${platform}-${resolvedVersion}`;
+    }
+    else {
+        return `claude-code-${platform}-${version}`;
+    }
+}
+/**
+ * Generate cache restore keys (fallback keys)
+ */
+function getRestoreKeys(version) {
+    const platform = external_node_os_.platform();
+    return [
+        `claude-code-${platform}-${version}-`,
+        `claude-code-${platform}-`,
+    ];
+}
+/**
+ * Get paths to cache
+ */
+function getCachePaths() {
+    const paths = getClaudePaths();
+    return [paths.bin, paths.data];
+}
+/**
+ * Restore Claude Code from cache
+ */
+async function restoreCache(options) {
+    const { version } = options;
+    const cachePaths = getCachePaths();
+    const primaryKey = await getCacheKey(version);
+    const restoreKeys = getRestoreKeys(version);
+    core.info(`Cache primary key: ${primaryKey}`);
+    core.debug(`Cache restore keys: ${restoreKeys.join(', ')}`);
+    core.debug(`Cache paths: ${cachePaths.join(', ')}`);
+    try {
+        const cacheKey = await cache.restoreCache(cachePaths, primaryKey, restoreKeys);
+        if (cacheKey) {
+            core.info(`✅ Cache restored from key: ${cacheKey}`);
+            return true;
+        }
+        else {
+            core.info('Cache not found');
+            return false;
+        }
+    }
+    catch (error) {
+        core.warning(`Failed to restore cache: ${error}`);
+        return false;
+    }
+}
+/**
+ * Save Claude Code to cache
+ */
+async function saveCache(options) {
+    const { version } = options;
+    const cachePaths = getCachePaths();
+    const primaryKey = await getCacheKey(version);
+    core.info(`Saving to cache with key: ${primaryKey}`);
+    core.debug(`Cache paths: ${cachePaths.join(', ')}`);
+    try {
+        await cache.saveCache(cachePaths, primaryKey);
+        core.info('✅ Cache saved successfully');
+    }
+    catch (error) {
+        // Don't fail the action if cache save fails
+        core.warning(`Failed to save cache: ${error}`);
+    }
 }
 
 ;// CONCATENATED MODULE: ./src/plugins.ts

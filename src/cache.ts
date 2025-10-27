@@ -1,6 +1,7 @@
 import * as os from 'node:os'
 import * as cache from '@actions/cache'
 import * as core from '@actions/core'
+import { fetchStableVersion } from './installer'
 import { getClaudePaths, getCurrentDate } from './utils'
 
 export interface CacheOptions {
@@ -10,12 +11,17 @@ export interface CacheOptions {
 /**
  * Generate cache key for Claude Code installation
  */
-export function getCacheKey(version: string): string {
+export async function getCacheKey(version: string): Promise<string> {
   const platform = os.platform()
 
   if (version === 'latest') {
     const date = getCurrentDate()
     return `claude-code-${platform}-latest-${date}`
+  }
+  else if (version === 'stable') {
+    // Resolve 'stable' to actual version number to create valid cache key
+    const resolvedVersion = await fetchStableVersion()
+    return `claude-code-${platform}-${resolvedVersion}`
   }
   else {
     return `claude-code-${platform}-${version}`
@@ -49,7 +55,7 @@ export async function restoreCache(options: CacheOptions): Promise<boolean> {
   const { version } = options
 
   const cachePaths = getCachePaths()
-  const primaryKey = getCacheKey(version)
+  const primaryKey = await getCacheKey(version)
   const restoreKeys = getRestoreKeys(version)
 
   core.info(`Cache primary key: ${primaryKey}`)
@@ -81,7 +87,7 @@ export async function saveCache(options: CacheOptions): Promise<void> {
   const { version } = options
 
   const cachePaths = getCachePaths()
-  const primaryKey = getCacheKey(version)
+  const primaryKey = await getCacheKey(version)
 
   core.info(`Saving to cache with key: ${primaryKey}`)
   core.debug(`Cache paths: ${cachePaths.join(', ')}`)

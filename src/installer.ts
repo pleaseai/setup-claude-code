@@ -43,7 +43,7 @@ export async function installClaudeCode(options: InstallOptions): Promise<void> 
 /**
  * Fetch the stable version from GCS
  */
-async function fetchStableVersion(): Promise<string> {
+export async function fetchStableVersion(): Promise<string> {
   const url = `${GCS_BUCKET}/stable`
   core.debug(`Fetching stable version from: ${url}`)
 
