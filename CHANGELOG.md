@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.1](https://github.com/pleaseai/setup-claude-code/compare/v1.1.0...v1.1.1) (2025-10-27)
+
+
+### Bug Fixes
+
+* resolve 'stable' version to actual version number for cache keys ([#6](https://github.com/pleaseai/setup-claude-code/issues/6)) ([3b5bf76](https://github.com/pleaseai/setup-claude-code/commit/3b5bf76e1356640a51a58987136867e615b2be51))
+
 ## [1.1.0](https://github.com/pleaseai/setup-claude-code/compare/v1.0.0...v1.1.0) (2025-10-26)
 
 
