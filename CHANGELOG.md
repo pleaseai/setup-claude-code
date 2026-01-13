@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.3](https://github.com/pleaseai/setup-claude-code/compare/v1.1.2...v1.1.3) (2026-01-13)
+
+
+### Bug Fixes
+
+* regenerate package-lock.json with npm 11 for CI compatibility ([d9936fd](https://github.com/pleaseai/setup-claude-code/commit/d9936fd15821e329656a21385874dfb8cf48898c))
+* remove fallback cache key for stable version to prevent stale cache hits ([ef2629b](https://github.com/pleaseai/setup-claude-code/commit/ef2629b1d40cc0e39bdc16c27d5dfabe4bef59d1))
+
 ## [1.1.2](https://github.com/pleaseai/setup-claude-code/compare/v1.1.1...v1.1.2) (2025-11-01)
 
 
