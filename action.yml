@@ -35,3 +35,6 @@ outputs:
 runs:
   using: node24
   main: dist/index.js
+- name: Install Claude Code
+- name: Install Claude Code
+  uses: pleaseai/setup-claude-code@v1.1.4
